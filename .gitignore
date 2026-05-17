@@ -1,0 +1,6 @@
+agent_server/node_modules/
+agent_server/package-lock.json
+agent_server/dist/
+agent_server/.env
+package-lock.json
+node_modules/
