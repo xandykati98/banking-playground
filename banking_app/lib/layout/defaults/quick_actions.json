@@ -1,0 +1,13 @@
+{
+  "id": "quick_actions",
+  "type": "QuickActions",
+  "order": 3,
+  "visible": true,
+  "props": {
+    "circleColor": "#F0F0F0",
+    "iconColor": "#1A1A1A",
+    "labelColor": "#1A1A1A",
+    "badgeColor": "#00C853",
+    "badgeTextColor": "#FFFFFF"
+  }
+}

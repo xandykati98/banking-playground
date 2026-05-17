@@ -1,0 +1,14 @@
+{
+  "id": "bottom_nav",
+  "type": "BottomNavBar",
+  "order": 6,
+  "visible": true,
+  "props": {
+    "backgroundColor": "#FFFFFF",
+    "borderColor": "#EEEEEE",
+    "selectedColor": "#1A1A1A",
+    "unselectedColor": "#9E9E9E",
+    "sellCircleColor": "#1A1A1A",
+    "sellDotColor": "#00C853"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "id": "balance_section",
+  "type": "BalanceSection",
+  "order": 2,
+  "visible": true,
+  "props": {
+    "amountTextColor": "#1A1A1A",
+    "chevronColor": "#9E9E9E",
+    "subtitleColor": "#757575",
+    "addBorderColor": "#757575",
+    "addIconColor": "#757575"
+  }
+}

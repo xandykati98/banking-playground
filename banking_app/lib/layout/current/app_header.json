@@ -1,0 +1,12 @@
+{
+  "id": "app_header",
+  "type": "AppHeader",
+  "order": 0,
+  "visible": true,
+  "props": {
+    "avatarBackgroundColor": "#B3E0F2",
+    "avatarIconColor": "#4A90D9",
+    "iconColor": "#1A1A1A",
+    "notificationBadgeColor": "#E53935"
+  }
+}

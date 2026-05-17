@@ -1,0 +1,11 @@
+{
+  "id": "tab_bar",
+  "type": "DashboardTabBar",
+  "order": 1,
+  "visible": true,
+  "props": {
+    "selectedTextColor": "#1A1A1A",
+    "unselectedTextColor": "#9E9E9E",
+    "underlineColor": "#1A1A1A"
+  }
+}

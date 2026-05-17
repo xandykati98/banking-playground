@@ -1,0 +1,14 @@
+{
+  "id": "account_section",
+  "type": "AccountSection",
+  "order": 5,
+  "visible": true,
+  "props": {
+    "titleColor": "#1A1A1A",
+    "cardBorderColor": "#E8E8E8",
+    "productNameColor": "#1A1A1A",
+    "balanceColor": "#1A1A1A",
+    "buttonBorderColor": "#E0E0E0",
+    "buttonTextColor": "#1A1A1A"
+  }
+}

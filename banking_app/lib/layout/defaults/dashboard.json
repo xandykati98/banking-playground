@@ -1,0 +1,8 @@
+{
+  "id": "dashboard_root",
+  "props": {
+    "scaffoldBackgroundColor": "#FFFFFF",
+    "fabBackgroundColor": "#6C63FF",
+    "fabIconColor": "#FFFFFF"
+  }
+}
