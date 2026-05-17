@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../component_props.dart';
+import '../../component_props.dart';
 
 class BottomNavBar extends StatelessWidget {
   const BottomNavBar({

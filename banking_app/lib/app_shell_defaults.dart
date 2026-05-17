@@ -3,7 +3,7 @@
 // Rules:
 //   - Keep AppShell as a public StatefulWidget with the same constructor signature.
 //   - Always keep the PromptModal reachable (e.g. via a FAB or button).
-//   - You may import any component from lib/components/ or add new ones.
+//   - You may import any component from lib/components/current/ or add new ones.
 //   - Do NOT import or modify main.dart.
 
 import 'package:flutter/material.dart';
@@ -11,13 +11,13 @@ import 'package:flutter/material.dart';
 import 'component_props.dart';
 import 'layout_model.dart';
 import 'prompt_modal.dart';
-import 'components/app_header.dart';
-import 'components/account_section.dart';
-import 'components/balance_section.dart';
-import 'components/bottom_nav.dart';
-import 'components/promo_banner.dart';
-import 'components/quick_actions.dart';
-import 'components/tab_bar.dart';
+import 'components/current/app_header.dart';
+import 'components/current/account_section.dart';
+import 'components/current/balance_section.dart';
+import 'components/current/bottom_nav.dart';
+import 'components/current/promo_banner.dart';
+import 'components/current/quick_actions.dart';
+import 'components/current/tab_bar.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({

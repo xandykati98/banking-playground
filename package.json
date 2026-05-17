@@ -3,7 +3,7 @@
     "npm-run-all": "^4.1.5"
   },
   "scripts": {
-    "dev:flutter": "cd banking_app && flutter run -d chrome",
+    "dev:flutter": "cd banking_app && flutter run -d chrome --vm-service-port=8181 --disable-service-auth-codes",
     "dev:server": "cd agent_server && npm run dev",
     "dev": "npm-run-all --parallel dev:flutter dev:server"
   }

@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
+import WebSocket from "ws";
 import { runAgentPrompt } from "./agent";
 
 dotenv.config();
@@ -20,11 +21,11 @@ const LAYOUT_DEFAULTS = path.resolve(
 );
 const COMPONENTS_CURRENT = path.resolve(
   __dirname,
-  "../../banking_app/lib/components"
+  "../../banking_app/lib/components/current"
 );
 const COMPONENTS_DEFAULTS = path.resolve(
   __dirname,
-  "../../banking_app/lib/components_defaults"
+  "../../banking_app/lib/components/defaults"
 );
 const APP_SHELL_CURRENT = path.resolve(
   __dirname,
@@ -105,6 +106,79 @@ function resetLayout(): void {
   fs.copyFileSync(APP_SHELL_DEFAULTS, APP_SHELL_CURRENT);
 }
 
+// Connects to the Flutter VM Service and triggers a hot reload.
+// Silently no-ops if Flutter isn't running or the VM service is unreachable.
+function triggerHotReload(): Promise<void> {
+  return new Promise((resolve) => {
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket("ws://localhost:8181/ws");
+    } catch {
+      resolve();
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      ws.terminate();
+      resolve();
+    }, 5000);
+
+    let msgId = 0;
+
+    ws.on("open", () => {
+      ws.send(
+        JSON.stringify({ jsonrpc: "2.0", id: ++msgId, method: "getVM", params: {} })
+      );
+    });
+
+    ws.on("message", (raw) => {
+      try {
+        const msg = JSON.parse(raw.toString()) as {
+          id: number;
+          result?: { isolates?: Array<{ id: string; runnable: boolean }> };
+          error?: { message: string };
+        };
+
+        if (msg.id === 1) {
+          const isolate = msg.result?.isolates?.find((i) => i.runnable);
+          if (!isolate) {
+            clearTimeout(timeout);
+            ws.close();
+            resolve();
+            return;
+          }
+          ws.send(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: ++msgId,
+              method: "reloadSources",
+              params: { isolateId: isolate.id },
+            })
+          );
+        } else if (msg.id === 2) {
+          clearTimeout(timeout);
+          ws.close();
+          if (msg.error) {
+            console.warn("[hot-reload] VM error:", msg.error.message);
+          } else {
+            console.log("[hot-reload] Hot reload triggered.");
+          }
+          resolve();
+        }
+      } catch {
+        clearTimeout(timeout);
+        ws.close();
+        resolve();
+      }
+    });
+
+    ws.on("error", () => {
+      clearTimeout(timeout);
+      resolve();
+    });
+  });
+}
+
 app.get("/health", (_req: Request, res: Response) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
@@ -144,6 +218,8 @@ app.post(
 
     try {
       const message = await runAgentPrompt(prompt.trim());
+      // Fire hot reload in the background — don't block the response.
+      triggerHotReload().catch(() => undefined);
       res.json({ status: "ok", message });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";

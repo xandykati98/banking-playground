@@ -11,10 +11,10 @@ Rules for app_shell.dart:
 - Keep AppShell as a public StatefulWidget with the same constructor signature:
     AppShell({ required LayoutData layout, required VoidCallback onReload })
 - Always keep the PromptModal accessible (e.g. via a FAB or a button somewhere).
-- You may import from lib/components/, lib/component_props.dart, lib/layout_model.dart,
+- You may import from lib/components/current/, lib/component_props.dart, lib/layout_model.dart,
   lib/prompt_modal.dart, and any Flutter package already in pubspec.yaml.
 
-### 2. Component Dart files — lib/components/
+### 2. Component Dart files — lib/components/current/
 Individual widget files for each dashboard section. Edit or create these freely.
 Current files: app_header.dart, tab_bar.dart, balance_section.dart,
 quick_actions.dart, promo_banner.dart, account_section.dart, bottom_nav.dart
@@ -35,7 +35,7 @@ LayoutData object. app_shell.dart receives the assembled LayoutData at runtime.
   lib/component_props.dart    propColor() utility
   lib/prompt_modal.dart       chat modal UI
   lib/app_shell_defaults.dart reset snapshot (read-only)
-  lib/components_defaults/    reset snapshots (read-only)
+  lib/components/defaults/    reset snapshots (read-only)
   lib/layout/defaults/        reset snapshots (read-only)
   pubspec.yaml
 
