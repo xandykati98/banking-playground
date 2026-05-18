@@ -4,6 +4,16 @@ import dotenv from "dotenv";
 import { runAgentPrompt } from "./agent";
 import { assembleLayout, resetLayout, LAYOUT_CURRENT } from "./layout";
 import { startFlutter, FlutterProcess } from "./flutter_process";
+import {
+  addMessage,
+  getHistory,
+  broadcast,
+  addSseClient,
+  removeSseClient,
+  startRun,
+  endRun,
+  ChatMessage,
+} from "./messages";
 
 dotenv.config();
 
@@ -43,12 +53,30 @@ app.get("/layout", (_req: Request, res: Response) => {
   }
 });
 
+// Returns the full persisted chat history.
+app.get("/messages", (_req: Request, res: Response<ChatMessage[]>) => {
+  res.json(getHistory());
+});
+
+// SSE endpoint — Flutter subscribes here to receive live agent activity events.
+app.get("/events", (req: Request, res: Response) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  addSseClient(res);
+  req.on("close", () => removeSseClient(res));
+});
+
 app.post("/reset", async (_req: Request, res: Response) => {
   try {
     resetLayout();
-    // Await the restart so files are fully flushed before Flutter recompiles.
     await flutter.restart();
-    res.json({ status: "ok", message: "Layout reset to defaults." });
+    const msg = addMessage("assistant", "UI reset to defaults.");
+    broadcast({ kind: "done" });
+    res.json({ status: "ok", message: msg.text });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     res.status(500).json({ status: "error", message });
@@ -68,19 +96,28 @@ app.post(
       return;
     }
 
+    addMessage("user", prompt.trim());
+    startRun();
+
     try {
-      const message = await runAgentPrompt(prompt.trim());
-      // Await the restart so Flutter recompiles before the response reaches the client.
-      // The client's onPromptComplete (layout reload) then runs against the new code.
+      const message = await runAgentPrompt(prompt.trim(), broadcast);
+
       try {
         await flutter.restart();
       } catch {
-        // Restart failure is non-fatal — still return the agent's message.
+        // Restart failure is non-fatal.
       }
+
+      addMessage("assistant", message);
+      endRun();
+      broadcast({ kind: "done" });
       res.json({ status: "ok", message });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       console.error("[prompt error]", message);
+      addMessage("assistant", message, true);
+      endRun();
+      broadcast({ kind: "done", isError: true });
       res.status(500).json({ status: "error", message });
     }
   }
