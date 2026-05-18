@@ -1,11 +1,11 @@
 {
   "id": "promo_banner",
   "type": "PromoBanner",
-  "order": 5,
+  "order": 4,
   "visible": true,
   "props": {
-    "gradientStart": "#991B1B",
-    "gradientEnd": "#DC2626",
+    "gradientStart": "#4A1D96",
+    "gradientEnd": "#7C3AED",
     "titleColor": "#FFFFFF",
     "ctaBackground": "#FFFFFF",
     "ctaTextColor": "#1A1A1A"

@@ -1,13 +1,9 @@
 import express, { Request, Response } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import WebSocket from "ws";
 import { runAgentPrompt } from "./agent";
-import {
-  assembleLayout,
-  resetLayout,
-  LAYOUT_CURRENT,
-} from "./layout";
+import { assembleLayout, resetLayout, LAYOUT_CURRENT } from "./layout";
+import { startFlutter, FlutterProcess } from "./flutter_process";
 
 dotenv.config();
 
@@ -17,6 +13,13 @@ const PORT = process.env.PORT ?? 3000;
 app.use(cors());
 app.use(express.json());
 
+// Start the Flutter app as a managed child process.
+const flutter: FlutterProcess = startFlutter();
+
+process.on("exit", () => flutter.kill());
+process.on("SIGINT", () => { flutter.kill(); process.exit(); });
+process.on("SIGTERM", () => { flutter.kill(); process.exit(); });
+
 interface PromptRequestBody {
   prompt: string;
 }
@@ -24,79 +27,6 @@ interface PromptRequestBody {
 interface PromptResponseBody {
   status: "ok" | "error";
   message: string;
-}
-
-// Connects to the Flutter VM Service and triggers a hot reload.
-// Silently no-ops if Flutter isn't running or the VM service is unreachable.
-function triggerHotReload(): Promise<void> {
-  return new Promise((resolve) => {
-    let ws: WebSocket;
-    try {
-      ws = new WebSocket("ws://localhost:8181/ws");
-    } catch {
-      resolve();
-      return;
-    }
-
-    const timeout = setTimeout(() => {
-      ws.terminate();
-      resolve();
-    }, 5000);
-
-    let msgId = 0;
-
-    ws.on("open", () => {
-      ws.send(
-        JSON.stringify({ jsonrpc: "2.0", id: ++msgId, method: "getVM", params: {} })
-      );
-    });
-
-    ws.on("message", (raw) => {
-      try {
-        const msg = JSON.parse(raw.toString()) as {
-          id: number;
-          result?: { isolates?: Array<{ id: string; runnable: boolean }> };
-          error?: { message: string };
-        };
-
-        if (msg.id === 1) {
-          const isolate = msg.result?.isolates?.find((i) => i.runnable);
-          if (!isolate) {
-            clearTimeout(timeout);
-            ws.close();
-            resolve();
-            return;
-          }
-          ws.send(
-            JSON.stringify({
-              jsonrpc: "2.0",
-              id: ++msgId,
-              method: "reloadSources",
-              params: { isolateId: isolate.id },
-            })
-          );
-        } else if (msg.id === 2) {
-          clearTimeout(timeout);
-          ws.close();
-          if (msg.error) {
-            console.warn("[hot-reload] VM error:", msg.error.message);
-          } else {
-            console.log("[hot-reload] Hot reload triggered.");
-          }
-          resolve();
-        }
-      } catch {
-        clearTimeout(timeout);
-        ws.close();
-        resolve();
-      }
-    });
-
-    ws.on("error", () => {
-      clearTimeout(timeout);
-      resolve();
-    });
-  });
 }
 
 app.get("/health", (_req: Request, res: Response) => {
@@ -113,10 +43,11 @@ app.get("/layout", (_req: Request, res: Response) => {
   }
 });
 
-app.post("/reset", (_req: Request, res: Response) => {
+app.post("/reset", async (_req: Request, res: Response) => {
   try {
     resetLayout();
-    triggerHotReload().catch(() => undefined);
+    // Await the restart so files are fully flushed before Flutter recompiles.
+    await flutter.restart();
     res.json({ status: "ok", message: "Layout reset to defaults." });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -139,8 +70,13 @@ app.post(
 
     try {
       const message = await runAgentPrompt(prompt.trim());
-      // Fire hot reload in the background — don't block the response.
-      triggerHotReload().catch(() => undefined);
+      // Await the restart so Flutter recompiles before the response reaches the client.
+      // The client's onPromptComplete (layout reload) then runs against the new code.
+      try {
+        await flutter.restart();
+      } catch {
+        // Restart failure is non-fatal — still return the agent's message.
+      }
       res.json({ status: "ok", message });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";

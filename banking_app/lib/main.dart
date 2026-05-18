@@ -20,7 +20,10 @@ void main() {
 
 class _LayoutNotifier extends ChangeNotifier {
   LayoutData _data = LayoutData.empty;
+  bool _loaded = false;
+
   LayoutData get data => _data;
+  bool get loaded => _loaded;
 
   Future<void> reload() async {
     try {
@@ -30,6 +33,7 @@ class _LayoutNotifier extends ChangeNotifier {
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body) as Map<String, dynamic>;
         _data = LayoutData.fromJson(json);
+        _loaded = true;
         notifyListeners();
       }
     } catch (_) {
@@ -95,10 +99,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: _layout,
-      builder: (context, _) => AppShell(
-        layout: _layout.data,
-        onReload: _layout.reload,
-      ),
+      builder: (context, _) {
+        if (!_layout.loaded) {
+          return const Scaffold(
+            body: Center(
+              child: CircularProgressIndicator(color: Color(0xFF6C63FF)),
+            ),
+          );
+        }
+        return AppShell(
+          layout: _layout.data,
+          onReload: _layout.reload,
+        );
+      },
     );
   }
 }
