@@ -1,7 +1,10 @@
 {
+  "name": "banking-playground",
+  "private": true,
+  "workspaces": ["agent_server"],
   "scripts": {
-    "dev": "cd agent_server && npm run dev",
+    "dev": "npm run dev --workspace=agent_server",
     "dev:flutter": "cd banking_app && flutter run -d chrome",
-    "dev:server": "cd agent_server && npm run dev"
+    "dev:server": "npm run dev --workspace=agent_server"
   }
 }
