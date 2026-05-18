@@ -2,3 +2,12 @@ agent_server/node_modules/
 agent_server/dist/
 agent_server/.env
 node_modules/
+
+# Flutter generated files
+banking_app/**/generated_plugin_registrant.cc
+banking_app/**/generated_plugin_registrant.h
+banking_app/**/generated_plugins.cmake
+banking_app/**/GeneratedPluginRegistrant.swift
+banking_app/**/GeneratedPluginRegistrant.h
+banking_app/**/GeneratedPluginRegistrant.m
+banking_app/**/generated_plugin_registrant.dart
