@@ -14,6 +14,18 @@ export async function runAgentPrompt(userPrompt: string): Promise<string> {
     apiKey,
     model: { id: "composer-2" },
     local: { cwd: FLUTTER_PROJECT_PATH },
+    mcpServers: {
+      "ui-tools": {
+        type: "stdio",
+        command: "npx",
+        args: [
+          "ts-node",
+          "--transpile-only",
+          path.resolve(__dirname, "../src/mcp_server.ts"),
+        ],
+        cwd: path.resolve(__dirname, ".."),
+      },
+    },
   });
 
   try {

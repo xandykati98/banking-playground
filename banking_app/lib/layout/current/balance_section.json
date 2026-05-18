@@ -4,7 +4,7 @@
   "order": 2,
   "visible": true,
   "props": {
-    "amountTextColor": "#DC2626",
+    "amountTextColor": "#1A1A1A",
     "chevronColor": "#9E9E9E",
     "subtitleColor": "#757575",
     "addBorderColor": "#757575",

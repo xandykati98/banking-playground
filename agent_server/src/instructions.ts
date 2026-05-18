@@ -39,7 +39,9 @@ LayoutData object. app_shell.dart receives the assembled LayoutData at runtime.
   lib/layout/defaults/        reset snapshots (read-only)
   pubspec.yaml
 
-"reset" is handled by the server — do NOT reset by copying files yourself.
+## Resetting the UI
+To reset the entire UI back to defaults, call the \`reset_ui\` tool (available in
+the ui-tools MCP server). Do NOT copy files yourself.
 
 ## JSON prop schema
 
