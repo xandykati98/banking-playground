@@ -74,9 +74,14 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen>
+    with SingleTickerProviderStateMixin {
   final _LayoutNotifier _layout = _LayoutNotifier();
   Timer? _pollTimer;
+  late AnimationController _fadeController;
+  http.Client? _sseClient;
+  StreamSubscription<List<int>>? _sseSub;
+  final StringBuffer _sseBuffer = StringBuffer();
 
   @override
   void initState() {
@@ -86,32 +91,89 @@ class _DashboardScreenState extends State<DashboardScreen> {
       const Duration(seconds: 3),
       (_) => _layout.reload(),
     );
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    );
+    _fadeController.forward();
+    _connectSse();
   }
 
   @override
   void dispose() {
     _pollTimer?.cancel();
     _layout.dispose();
+    _sseSub?.cancel();
+    _sseClient?.close();
+    _fadeController.dispose();
     super.dispose();
+  }
+
+  void _connectSse() {
+    final client = http.Client();
+    _sseClient = client;
+    final request = http.Request('GET', Uri.parse('$agentServerUrl/events'));
+    request.headers['Accept'] = 'text/event-stream';
+    request.headers['Cache-Control'] = 'no-cache';
+    client.send(request).then((resp) {
+      final sub = resp.stream.listen(
+        _onSseBytes,
+        onDone: _onSseDone,
+        onError: (_) => _onSseDone(),
+        cancelOnError: true,
+      );
+      _sseSub = sub;
+    }).catchError((_) {});
+  }
+
+  void _onSseBytes(List<int> bytes) {
+    _sseBuffer.write(utf8.decode(bytes));
+    final raw = _sseBuffer.toString();
+    final parts = raw.split('\n\n');
+    _sseBuffer
+      ..clear()
+      ..write(parts.last);
+    for (final part in parts.sublist(0, parts.length - 1)) {
+      final dataLine = part
+          .split('\n')
+          .firstWhere((l) => l.startsWith('data: '), orElse: () => '');
+      if (dataLine.isEmpty) continue;
+      final jsonStr = dataLine.substring(6).trim();
+      try {
+        final decoded = jsonDecode(jsonStr) as Map<String, dynamic>;
+        if (decoded['kind'] == 'restarting' && mounted) {
+          _fadeController.reverse();
+        }
+      } catch (_) {}
+    }
+  }
+
+  void _onSseDone() {
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) _connectSse();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: _layout,
-      builder: (context, _) {
-        if (!_layout.loaded) {
-          return const Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(color: Color(0xFF6C63FF)),
-            ),
+    return FadeTransition(
+      opacity: _fadeController,
+      child: ListenableBuilder(
+        listenable: _layout,
+        builder: (context, _) {
+          if (!_layout.loaded) {
+            return const Scaffold(
+              body: Center(
+                child: CircularProgressIndicator(color: Color(0xFF6C63FF)),
+              ),
+            );
+          }
+          return AppShell(
+            layout: _layout.data,
+            onReload: _layout.reload,
           );
-        }
-        return AppShell(
-          layout: _layout.data,
-          onReload: _layout.reload,
-        );
-      },
+        },
+      ),
     );
   }
 }

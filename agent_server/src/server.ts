@@ -8,6 +8,7 @@ import {
   addMessage,
   getHistory,
   broadcast,
+  broadcastTransient,
   addSseClient,
   removeSseClient,
   startRun,
@@ -73,6 +74,8 @@ app.get("/events", (req: Request, res: Response) => {
 app.post("/reset", async (_req: Request, res: Response) => {
   try {
     resetLayout();
+    broadcastTransient({ kind: "restarting" });
+    await new Promise<void>((resolve) => setTimeout(resolve, 2000));
     await flutter.restart();
     const msg = addMessage("assistant", "UI reset to defaults.");
     broadcast({ kind: "done" });
@@ -103,6 +106,8 @@ app.post(
       const message = await runAgentPrompt(prompt.trim(), broadcast);
 
       try {
+        broadcastTransient({ kind: "restarting" });
+        await new Promise<void>((resolve) => setTimeout(resolve, 2000));
         await flutter.restart();
       } catch {
         // Restart failure is non-fatal.

@@ -52,7 +52,7 @@ class AccountSection extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      balanceVisible ? r'R$ 0,00' : r'R$ ••••',
+                      balanceVisible ? r'R$ 10,00' : r'R$ ••••',
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,

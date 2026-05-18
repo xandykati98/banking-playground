@@ -12,7 +12,7 @@ export interface ChatMessage {
   timestamp: number;
 }
 
-export type ActivityEventKind = "tool" | "thinking" | "text_delta" | "done";
+export type ActivityEventKind = "tool" | "thinking" | "text_delta" | "done" | "restarting";
 
 export interface ActivityEvent {
   kind: ActivityEventKind;
@@ -83,6 +83,15 @@ export function broadcast(event: ActivityEvent): void {
   // Buffer every event (including "done") so replays are complete.
   runBuffer.push(event);
 
+  const payload = `data: ${JSON.stringify(event)}\n\n`;
+  for (const client of sseClients) {
+    client.write(payload);
+  }
+}
+
+// Sends an event to connected clients without buffering — reconnecting clients
+// after a Flutter restart will not replay it.
+export function broadcastTransient(event: ActivityEvent): void {
   const payload = `data: ${JSON.stringify(event)}\n\n`;
   for (const client of sseClients) {
     client.write(payload);
