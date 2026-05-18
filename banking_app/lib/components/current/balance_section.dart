@@ -28,7 +28,7 @@ class BalanceSection extends StatelessWidget {
                   letterSpacing: -0.5,
                   color: propColor(props, 'amountTextColor', Colors.black),
                 ),
-                child: Text(visible ? r'R$ 0,00' : r'R$ ••••'),
+                child: Text(visible ? r'R$ 12.847,33' : r'R$ ••••'),
               ),
               const Spacer(),
               Icon(

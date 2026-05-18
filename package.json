@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "npm run dev --workspace=agent_server",
     "dev:flutter": "cd banking_app && flutter run -d chrome",
-    "dev:server": "npm run dev --workspace=agent_server"
+    "dev:server": "npm run dev --workspace=agent_server",
+    "build": "npm run build --workspace=agent_server && cd banking_app && flutter build web",
+    "start": "npm run start --workspace=agent_server"
   }
 }
