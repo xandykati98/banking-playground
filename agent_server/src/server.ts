@@ -9,6 +9,7 @@ import {
   getHistory,
   broadcast,
   broadcastTransient,
+  pingClients,
   addSseClient,
   removeSseClient,
   startRun,
@@ -30,6 +31,22 @@ const flutter: FlutterProcess = startFlutter();
 process.on("exit", () => flutter.kill());
 process.on("SIGINT", () => { flutter.kill(); process.exit(); });
 process.on("SIGTERM", () => { flutter.kill(); process.exit(); });
+
+// Must be less than the Flutter client timeout (300 s) so the server always
+// sends an HTTP error response before the client gives up with "Future not completed".
+const AGENT_TIMEOUT_MS = 270_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`Agent run timed out after ${ms / 1000}s — the Cursor local agent may be unresponsive`)),
+        ms
+      )
+    ),
+  ]);
+}
 
 interface PromptRequestBody {
   prompt: string;
@@ -99,18 +116,22 @@ app.post(
       return;
     }
 
+    console.log(`[prompt] Received: "${prompt.trim().slice(0, 80)}"`);
     addMessage("user", prompt.trim());
     startRun();
 
     try {
-      const message = await runAgentPrompt(prompt.trim(), broadcast);
+      const message = await withTimeout(runAgentPrompt(prompt.trim(), broadcast), AGENT_TIMEOUT_MS);
+      console.log(`[prompt] Agent finished at ${new Date().toISOString()}. Broadcasting restarting signal...`);
 
       try {
         broadcastTransient({ kind: "restarting" });
         await new Promise<void>((resolve) => setTimeout(resolve, 2000));
+        console.log(`[prompt] Triggering Flutter restart at ${new Date().toISOString()}...`);
         await flutter.restart();
-      } catch {
-        // Restart failure is non-fatal.
+        console.log("[prompt] Flutter restarted.");
+      } catch (restartErr) {
+        console.warn("[prompt] Flutter restart failed (non-fatal):", restartErr);
       }
 
       addMessage("assistant", message);
@@ -119,7 +140,7 @@ app.post(
       res.json({ status: "ok", message });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
-      console.error("[prompt error]", message);
+      console.error("[prompt] Error:", message);
       addMessage("assistant", message, true);
       endRun();
       broadcast({ kind: "done", isError: true });
@@ -127,6 +148,10 @@ app.post(
     }
   }
 );
+
+// Keep all SSE connections alive — prevents Chrome from silently dropping
+// idle streaming connections, which would leave the Flutter UI stuck loading.
+setInterval(pingClients, 25000);
 
 app.listen(PORT, () => {
   console.log(`Agent server running on http://localhost:${PORT}`);

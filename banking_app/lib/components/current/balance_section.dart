@@ -1,5 +1,3 @@
-import 'dart:ui' show FontFeature;
-
 import 'package:flutter/material.dart';
 import '../../component_props.dart';
 
@@ -25,14 +23,12 @@ class BalanceSection extends StatelessWidget {
               AnimatedDefaultTextStyle(
                 duration: const Duration(milliseconds: 400),
                 style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w600,
-                  height: 1.05,
-                  letterSpacing: -0.75,
-                  fontFeatures: const [FontFeature.tabularFigures()],
+                  fontSize: 30,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: -0.5,
                   color: propColor(props, 'amountTextColor', Colors.black),
                 ),
-                child: Text(visible ? r'R$ 10,00' : r'R$ ••••'),
+                child: Text(visible ? r'R$ 0,00' : r'R$ ••••'),
               ),
               const Spacer(),
               Icon(

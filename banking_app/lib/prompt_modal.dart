@@ -47,6 +47,7 @@ class _ActivityEvent {
     this.callId,
     this.toolName,
     this.toolStatus,
+    this.toolInput,
     this.delta,
     this.isError = false,
   });
@@ -55,6 +56,7 @@ class _ActivityEvent {
   final String? callId;
   final String? toolName;
   final String? toolStatus; // "running" | "completed" | "error"
+  final String? toolInput; // file path extracted from tool args
   final String? delta;
   final bool isError;
 
@@ -63,6 +65,7 @@ class _ActivityEvent {
         callId: json['callId'] as String?,
         toolName: json['toolName'] as String?,
         toolStatus: json['toolStatus'] as String?,
+        toolInput: json['toolInput'] as String?,
         delta: json['delta'] as String?,
         isError: json['isError'] as bool? ?? false,
       );
@@ -71,10 +74,11 @@ class _ActivityEvent {
 // ─── Stream state ─────────────────────────────────────────────────────────────
 
 class _ToolEntry {
-  _ToolEntry({required this.callId, required this.name, required this.status});
+  _ToolEntry({required this.callId, required this.name, required this.status, this.input});
   final String callId;
   final String name;
   String status;
+  final String? input; // file path, if available
 }
 
 // A segment is one of: a batch of tool calls, a block of thinking text,
@@ -104,12 +108,12 @@ class _Seg {
   final List<_ToolEntry> tools; // toolBatch
   final Map<String, int> _toolIndex;
 
-  void addOrUpdateTool(String callId, String name, String status) {
+  void addOrUpdateTool(String callId, String name, String status, {String? input}) {
     if (_toolIndex.containsKey(callId)) {
       tools[_toolIndex[callId]!].status = status;
     } else {
       _toolIndex[callId] = tools.length;
-      tools.add(_ToolEntry(callId: callId, name: name, status: status));
+      tools.add(_ToolEntry(callId: callId, name: name, status: status, input: input));
     }
   }
 }
@@ -127,16 +131,16 @@ class _StreamState {
         // Search existing tool batches for this callId (handles running→completed).
         for (final seg in segments) {
           if (seg.type == _SegType.toolBatch && seg._toolIndex.containsKey(id)) {
-            seg.addOrUpdateTool(id, e.toolName!, e.toolStatus!);
+            seg.addOrUpdateTool(id, e.toolName!, e.toolStatus!, input: e.toolInput);
             return;
           }
         }
         // New call — add to the last toolBatch or create one.
         if (segments.isNotEmpty && segments.last.type == _SegType.toolBatch) {
-          segments.last.addOrUpdateTool(id, e.toolName!, e.toolStatus!);
+          segments.last.addOrUpdateTool(id, e.toolName!, e.toolStatus!, input: e.toolInput);
         } else {
           final batch = _Seg.tools();
-          batch.addOrUpdateTool(id, e.toolName!, e.toolStatus!);
+          batch.addOrUpdateTool(id, e.toolName!, e.toolStatus!, input: e.toolInput);
           segments.add(batch);
         }
       case 'thinking':
@@ -314,6 +318,17 @@ class _PromptModalState extends State<PromptModal> {
     });
   }
 
+  Future<void> _resetUi() async {
+    setState(() => _loading = true);
+    try {
+      await http
+          .post(Uri.parse('$agentServerUrl/reset'))
+          .timeout(const Duration(seconds: 30));
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
   Future<void> _sendPrompt(String prompt) async {
     if (prompt.trim().isEmpty) return;
 
@@ -414,6 +429,12 @@ class _PromptModalState extends State<PromptModal> {
                             fontSize: 16, fontWeight: FontWeight.bold)),
                     const Spacer(),
                     IconButton(
+                      icon: const Icon(Icons.refresh, size: 20),
+                      onPressed: _loading ? null : _resetUi,
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Reset UI',
+                    ),
+                    IconButton(
                       icon: const Icon(Icons.close, size: 20),
                       onPressed: () => Navigator.of(context).pop(),
                       visualDensity: VisualDensity.compact,
@@ -502,7 +523,7 @@ class _StreamingBubble extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: state.segments[i].tools
-                    .map((t) => _ToolRow(name: t.name, status: t.status))
+                    .map((t) => _ToolRow(name: t.name, status: t.status, input: t.input))
                     .toList(),
               )
             else if (state.segments[i].type == _SegType.thinking)
@@ -575,17 +596,18 @@ class _ThinkingBlockState extends State<_ThinkingBlock> {
 }
 
 class _ToolRow extends StatelessWidget {
-  const _ToolRow({required this.name, required this.status});
+  const _ToolRow({required this.name, required this.status, this.input});
 
   final String name;
   final String status;
+  final String? input;
 
   static const _labels = <String, String>{
-    'read_file': 'Reading file',
-    'edit_file': 'Editing file',
-    'write_file': 'Writing file',
-    'create_file': 'Creating file',
-    'delete_file': 'Deleting file',
+    'read_file': 'Reading',
+    'edit_file': 'Editing',
+    'write_file': 'Writing',
+    'create_file': 'Creating',
+    'delete_file': 'Deleting',
     'list_dir': 'Listing directory',
     'grep': 'Searching code',
     'glob': 'Searching files',
@@ -594,6 +616,12 @@ class _ToolRow extends StatelessWidget {
     'bash': 'Running command',
     'shell': 'Running command',
   };
+
+  // Returns just the last path component for brevity.
+  static String _basename(String p) {
+    final parts = p.replaceAll(r'\', '/').split('/');
+    return parts.lastWhere((s) => s.isNotEmpty, orElse: () => p);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -609,7 +637,9 @@ class _ToolRow extends StatelessWidget {
         : isRunning
             ? Icons.sync
             : Icons.check_circle_outline;
-    final label = _labels[name] ?? name.replaceAll('_', ' ');
+    final baseLabel = _labels[name] ?? name.replaceAll('_', ' ');
+    final fileLabel = input != null ? _basename(input!) : null;
+    final label = fileLabel != null ? '$baseLabel $fileLabel' : baseLabel;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 1),

@@ -20,6 +20,8 @@ export interface ActivityEvent {
   callId?: string;
   toolName?: string;
   toolStatus?: "running" | "completed" | "error";
+  // Best-effort file path extracted from tool args (unstable schema — parsed defensively).
+  toolInput?: string;
   delta?: string;
   isError?: boolean;
 }
@@ -95,5 +97,14 @@ export function broadcastTransient(event: ActivityEvent): void {
   const payload = `data: ${JSON.stringify(event)}\n\n`;
   for (const client of sseClients) {
     client.write(payload);
+  }
+}
+
+// Sends an SSE comment to all connected clients to keep connections alive and
+// flush sockets that have silently died (write errors trigger 'close' on the
+// request, which removes the client from the set).
+export function pingClients(): void {
+  for (const client of sseClients) {
+    client.write(": keepalive\n\n");
   }
 }
