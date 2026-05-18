@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:http/http.dart' as http;
 
 const String agentServerUrl = 'http://localhost:3000';
@@ -531,10 +532,24 @@ class _StreamingBubble extends StatelessWidget {
                 text: state.segments[i].content,
               )
             else
-              Text(
-                _normalizeStreamText(state.segments[i].content),
-                style: const TextStyle(
-                    fontSize: 14, color: Colors.black87, height: 1.4),
+              MarkdownBody(
+                data: _normalizeStreamText(state.segments[i].content),
+                styleSheet: MarkdownStyleSheet(
+                  p: const TextStyle(fontSize: 14, color: Colors.black87, height: 1.4),
+                  code: TextStyle(
+                    fontSize: 12,
+                    color: const Color(0xFF6C63FF),
+                    backgroundColor: const Color(0xFFEDE9FF),
+                    fontFamily: 'monospace',
+                  ),
+                  codeblockDecoration: BoxDecoration(
+                    color: const Color(0xFFEDE9FF),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  blockquoteDecoration: const BoxDecoration(
+                    border: Border(left: BorderSide(color: Color(0xFF6C63FF), width: 3)),
+                  ),
+                ),
               ),
           ],
         ],
@@ -581,13 +596,21 @@ class _ThinkingBlockState extends State<_ThinkingBlock> {
         ),
         if (!_collapsed) ...[
           const SizedBox(height: 2),
-          Text(
-            _normalizeStreamText(widget.text),
-            style: const TextStyle(
-                fontSize: 11,
-                color: Color(0xFF888888),
-                fontStyle: FontStyle.italic,
-                height: 1.5),
+          MarkdownBody(
+            data: _normalizeStreamText(widget.text),
+            styleSheet: MarkdownStyleSheet(
+              p: const TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFF888888),
+                  fontStyle: FontStyle.italic,
+                  height: 1.5),
+              code: TextStyle(
+                fontSize: 10,
+                color: const Color(0xFF9C8FE8),
+                backgroundColor: const Color(0xFFF0EEFF),
+                fontFamily: 'monospace',
+              ),
+            ),
           ),
         ],
       ],
@@ -772,18 +795,31 @@ class _MessageBubble extends StatelessWidget {
             bottomRight: Radius.circular(isUser ? 4 : 16),
           ),
         ),
-        child: Text(
-          message.text,
-          style: TextStyle(
-            color: isUser
-                ? Colors.white
-                : message.isError
-                    ? Colors.red.shade700
-                    : Colors.black87,
-            fontSize: 14,
-            height: 1.4,
-          ),
-        ),
+        child: isUser || message.isError
+            ? Text(
+                message.text,
+                style: TextStyle(
+                  color: isUser ? Colors.white : Colors.red.shade700,
+                  fontSize: 14,
+                  height: 1.4,
+                ),
+              )
+            : MarkdownBody(
+                data: message.text,
+                styleSheet: MarkdownStyleSheet(
+                  p: const TextStyle(fontSize: 14, color: Colors.black87, height: 1.4),
+                  code: TextStyle(
+                    fontSize: 12,
+                    color: const Color(0xFF6C63FF),
+                    backgroundColor: const Color(0xFFEDE9FF),
+                    fontFamily: 'monospace',
+                  ),
+                  codeblockDecoration: BoxDecoration(
+                    color: const Color(0xFFEDE9FF),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+              ),
       ),
     );
   }

@@ -2,5 +2,6 @@ x - seamless hot restart to hide recompilation
 x - run on build mode
 x - record end of day 1 video
 x - chat ui improvements (streaming)
-chat ui improvements (design, button to reset ui)
-test on ios and android
+x - reset button
+design of chat improvements
+better front end
