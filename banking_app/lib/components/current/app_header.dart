@@ -38,7 +38,7 @@ class AppHeader extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           const Text(
-            r'$dos-',
+            r'User Name',
             style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
           ),
           const Spacer(),

@@ -298,6 +298,12 @@ class _PromptModalState extends State<PromptModal> {
       return;
     }
 
+    if (event.kind == 'restarting') {
+      // Collapse the sheet using its native slide-down dismiss animation.
+      Navigator.of(context).pop();
+      return;
+    }
+
     if (event.kind == 'done') {
       setState(() => _loading = false);
       widget.onPromptComplete();
@@ -416,7 +422,7 @@ class _PromptModalState extends State<PromptModal> {
 
   @override
   Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
+    final sheet = DraggableScrollableSheet(
       initialChildSize: 0.7,
       minChildSize: 0.4,
       maxChildSize: 0.95,
@@ -513,6 +519,7 @@ class _PromptModalState extends State<PromptModal> {
         );
       },
     );
+    return sheet;
   }
 }
 
