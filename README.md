@@ -64,14 +64,24 @@ cd banking_app && flutter pub get && cd ..
 
 ## Running
 
+**Preferred** — build once, then run the compiled server (faster than dev mode; no TypeScript watch overhead):
+
 ```bash
-# Start the agent server (watches for changes and manages Flutter)
+npm run build
+npm run start
+```
+
+`build` compiles the agent server and runs `flutter build web`. `start` runs the compiled server (`node dist/server.js`), which still launches Flutter in Chrome and handles hot restarts after each prompt.
+
+**Development** — auto-reloads the server when you edit TypeScript:
+
+```bash
 npm run dev
 ```
 
-The server starts Flutter automatically. Open the URL printed in the terminal (usually `http://localhost:3000`) in Chrome.
+The server starts Flutter automatically. Open the app URL printed in the terminal (not the API port — the agent API listens on `http://localhost:3000`).
 
-To run them separately:
+To run Flutter and the server separately:
 
 ```bash
 npm run dev:server   # agent server only (port 3000)
@@ -106,3 +116,9 @@ npm run dev:flutter  # flutter run -d chrome
 - `main.dart`, `app_shell.dart`, `app_shell_defaults.dart`, `prompt_modal.dart`, `layout_model.dart`, `component_props.dart`
 - `components/current/` — agent-editable widgets; `components/defaults/` — reset snapshots
 - `layout/current/` — agent-editable JSON props; `layout/defaults/` — reset snapshots
+
+## Contact
+
+- Email: [xandykati98@gmail.com](mailto:xandykati98@gmail.com)
+- Website: [xandykati98.com](https://xandykati98.com)
+- GitHub: [xandykati98](https://github.com/xandykati98)
