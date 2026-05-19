@@ -19,29 +19,6 @@ String _normalizeStreamText(String input) {
 
 // ─── Data types ──────────────────────────────────────────────────────────────
 
-enum _Role { user, assistant }
-
-class _ChatMessage {
-  _ChatMessage({
-    required this.role,
-    required this.text,
-    this.isError = false,
-    this.timestamp,
-  });
-
-  final _Role role;
-  final String text;
-  final bool isError;
-  final int? timestamp;
-
-  factory _ChatMessage.fromJson(Map<String, dynamic> json) => _ChatMessage(
-        role: (json['role'] as String?) == 'user' ? _Role.user : _Role.assistant,
-        text: json['text'] as String? ?? '',
-        isError: json['isError'] as bool? ?? false,
-        timestamp: json['timestamp'] as int?,
-      );
-}
-
 class _ActivityEvent {
   const _ActivityEvent({
     required this.kind,
@@ -162,6 +139,27 @@ class _StreamState {
   void clear() => segments.clear();
 }
 
+// A completed agent turn: the user's prompt text + the full stream state built
+// from the recorded activity events. Used to reconstruct persistent chat history.
+class _HistoricalTurn {
+  _HistoricalTurn({required this.userText, required this.stream});
+
+  final String userText;
+  final _StreamState stream;
+
+  factory _HistoricalTurn.fromJson(Map<String, dynamic> json) {
+    final userText = json['userText'] as String? ?? '';
+    final events = (json['events'] as List<dynamic>? ?? [])
+        .map((e) => _ActivityEvent.fromJson(e as Map<String, dynamic>))
+        .toList();
+    final stream = _StreamState();
+    for (final event in events) {
+      stream.apply(event);
+    }
+    return _HistoricalTurn(userText: userText, stream: stream);
+  }
+}
+
 // ─── Prompt Modal ─────────────────────────────────────────────────────────────
 
 class PromptModal extends StatefulWidget {
@@ -177,8 +175,9 @@ class _PromptModalState extends State<PromptModal> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
-  final List<_ChatMessage> _messages = [];
+  final List<_HistoricalTurn> _turns = [];
   final _StreamState _stream = _StreamState();
+  String? _liveUserText;
 
   bool _loading = false;
   bool _historyLoaded = false;
@@ -190,7 +189,7 @@ class _PromptModalState extends State<PromptModal> {
   @override
   void initState() {
     super.initState();
-    _loadHistory();
+    _loadTurns();
     _connectSse();
   }
 
@@ -205,19 +204,25 @@ class _PromptModalState extends State<PromptModal> {
 
   // ── History ────────────────────────────────────────────────────────────────
 
-  Future<void> _loadHistory() async {
+  // [clearLive] should be true after a run completes: the live turn is now
+  // included in the returned turns list, so we clear the live state to avoid
+  // showing it twice.
+  Future<void> _loadTurns({bool clearLive = false}) async {
     try {
       final resp = await http
-          .get(Uri.parse('$agentServerUrl/messages'))
+          .get(Uri.parse('$agentServerUrl/turns'))
           .timeout(const Duration(seconds: 5));
       if (resp.statusCode == 200 && mounted) {
         final list = jsonDecode(resp.body) as List<dynamic>;
         setState(() {
-          // Always replace — prevents duplicates from repeated reloads.
-          _messages
+          _turns
             ..clear()
             ..addAll(list.map(
-                (e) => _ChatMessage.fromJson(e as Map<String, dynamic>)));
+                (e) => _HistoricalTurn.fromJson(e as Map<String, dynamic>)));
+          if (clearLive) {
+            _liveUserText = null;
+            _stream.clear();
+          }
           _historyLoaded = true;
         });
         _scrollToBottom();
@@ -281,27 +286,40 @@ class _PromptModalState extends State<PromptModal> {
   void _handleSseEvent(_ActivityEvent event) {
     if (!mounted) return;
 
+    // Emitted at the start of every run (also buffered for reconnecting clients).
+    // Lets Flutter recover the live user text after a hot restart mid-run.
+    if (event.kind == 'start') {
+      setState(() {
+        _liveUserText = event.delta;
+        _stream.clear();
+        _loading = true;
+      });
+      _scrollToBottom();
+      return;
+    }
+
     if (event.kind == 'done') {
-      // Keep _stream visible — it freezes in place showing what the agent did.
-      // It will be cleared only when the next prompt is sent.
       setState(() => _loading = false);
       widget.onPromptComplete();
-      _loadHistory();
+      // clearLive: moves the live turn into _turns and hides the live state.
+      _loadTurns(clearLive: true);
       _scrollToBottom();
       return;
     }
 
     setState(() {
       _stream.apply(event);
-      _loading = true; // ensure loading stays true if SSE reconnect replays
+      _loading = true;
     });
     _scrollToBottom();
   }
 
   void _onSseDone() {
-    // Reconnect after a short delay — server may have restarted.
     Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) _connectSse();
+      if (mounted) {
+        _loadTurns(); // resync completed turns before reconnecting
+        _connectSse();
+      }
     });
   }
 
@@ -330,11 +348,26 @@ class _PromptModalState extends State<PromptModal> {
     }
   }
 
+  Future<void> _clearHistory() async {
+    try {
+      await http
+          .delete(Uri.parse('$agentServerUrl/turns'))
+          .timeout(const Duration(seconds: 5));
+      if (mounted) {
+        setState(() {
+          _turns.clear();
+          _liveUserText = null;
+          _stream.clear();
+        });
+      }
+    } catch (_) {}
+  }
+
   Future<void> _sendPrompt(String prompt) async {
     if (prompt.trim().isEmpty) return;
 
     setState(() {
-      _messages.add(_ChatMessage(role: _Role.user, text: prompt.trim()));
+      _liveUserText = prompt.trim();
       _stream.clear();
       _loading = true;
     });
@@ -353,12 +386,9 @@ class _PromptModalState extends State<PromptModal> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _messages.add(_ChatMessage(
-              role: _Role.assistant,
-              text: 'Connection error: $e',
-              isError: true));
+          _stream.apply(
+              _ActivityEvent(kind: 'text_delta', delta: 'Connection error: $e'));
           _loading = false;
-          _stream.clear();
         });
         _scrollToBottom();
       }
@@ -367,24 +397,18 @@ class _PromptModalState extends State<PromptModal> {
 
   // ── Build helpers ─────────────────────────────────────────────────────────
 
-  // Inserts the streaming bubble between the last user message and the last
-  // assistant reply so the order is always: prompt → stream → response.
+  // Each turn renders as: user bubble → stream traces bubble.
+  // No separate assistant message bubble is ever shown.
   List<Widget> _buildMessageList() {
-    if (_stream.isEmpty) {
-      return _messages.map<Widget>((m) => _MessageBubble(message: m)).toList();
-    }
-
-    // The streaming bubble already contains the full assistant reply via
-    // text_delta, so skip the last assistant message to avoid duplication.
-    final msgs = (_messages.isNotEmpty && _messages.last.role == _Role.assistant)
-        ? _messages.sublist(0, _messages.length - 1)
-        : _messages;
-
     return [
-      ...msgs.map<Widget>((m) => _MessageBubble(message: m)),
-      _StreamingBubble(
-        state: _stream,
-      ),
+      for (final turn in _turns) ...[
+        _UserBubble(text: turn.userText),
+        _StreamingBubble(state: turn.stream),
+      ],
+      if (_liveUserText != null) ...[
+        _UserBubble(text: _liveUserText!),
+        if (!_stream.isEmpty) _StreamingBubble(state: _stream),
+      ],
     ];
   }
 
@@ -430,6 +454,12 @@ class _PromptModalState extends State<PromptModal> {
                             fontSize: 16, fontWeight: FontWeight.bold)),
                     const Spacer(),
                     IconButton(
+                      icon: const Icon(Icons.delete_outline, size: 20),
+                      onPressed: _loading ? null : _clearHistory,
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Clear chat history',
+                    ),
+                    IconButton(
                       icon: const Icon(Icons.refresh, size: 20),
                       onPressed: _loading ? null : _resetUi,
                       visualDensity: VisualDensity.compact,
@@ -457,7 +487,7 @@ class _PromptModalState extends State<PromptModal> {
                           ),
                         ),
                       )
-                    : _messages.isEmpty && _stream.isEmpty
+                    : _turns.isEmpty && _liveUserText == null
                         ? const _EmptyChat()
                         : ListView(
                             controller: _scrollController,
@@ -766,60 +796,33 @@ class _PromptInput extends StatelessWidget {
   }
 }
 
-class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({required this.message});
+class _UserBubble extends StatelessWidget {
+  const _UserBubble({required this.text});
 
-  final _ChatMessage message;
+  final String text;
 
   @override
   Widget build(BuildContext context) {
-    final isUser = message.role == _Role.user;
     return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      alignment: Alignment.centerRight,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
+        margin: const EdgeInsets.only(top: 10, bottom: 10),
         constraints:
             BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: isUser
-              ? const Color(0xFF6C63FF)
-              : message.isError
-                  ? const Color(0xFFFFEBEE)
-                  : const Color(0xFFF0F0F0),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: const BoxDecoration(
+          color: Color(0xFF6C63FF),
           borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomLeft: Radius.circular(isUser ? 16 : 4),
-            bottomRight: Radius.circular(isUser ? 4 : 16),
+            topLeft: Radius.circular(16),
+            topRight: Radius.circular(16),
+            bottomLeft: Radius.circular(16),
+            bottomRight: Radius.circular(4),
           ),
         ),
-        child: isUser || message.isError
-            ? Text(
-                message.text,
-                style: TextStyle(
-                  color: isUser ? Colors.white : Colors.red.shade700,
-                  fontSize: 14,
-                  height: 1.4,
-                ),
-              )
-            : MarkdownBody(
-                data: message.text,
-                styleSheet: MarkdownStyleSheet(
-                  p: const TextStyle(fontSize: 14, color: Colors.black87, height: 1.4),
-                  code: TextStyle(
-                    fontSize: 12,
-                    color: const Color(0xFF6C63FF),
-                    backgroundColor: const Color(0xFFEDE9FF),
-                    fontFamily: 'monospace',
-                  ),
-                  codeblockDecoration: BoxDecoration(
-                    color: const Color(0xFFEDE9FF),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                ),
-              ),
+        child: Text(
+          text,
+          style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.4),
+        ),
       ),
     );
   }

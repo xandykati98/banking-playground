@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import { Response } from "express";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -12,7 +14,7 @@ export interface ChatMessage {
   timestamp: number;
 }
 
-export type ActivityEventKind = "tool" | "thinking" | "text_delta" | "done" | "restarting";
+export type ActivityEventKind = "tool" | "thinking" | "text_delta" | "done" | "restarting" | "start";
 
 export interface ActivityEvent {
   kind: ActivityEventKind;
@@ -26,9 +28,42 @@ export interface ActivityEvent {
   isError?: boolean;
 }
 
+export interface TurnRecord {
+  userText: string;
+  events: ActivityEvent[];
+}
+
+// ─── Persistence ────────────────────────────────────────────────────────────
+
+const DATA_DIR = path.resolve(__dirname, "../data");
+const TURNS_FILE = path.join(DATA_DIR, "turns.json");
+
+function loadTurnsFromDisk(): TurnRecord[] {
+  try {
+    if (!fs.existsSync(TURNS_FILE)) return [];
+    const raw = fs.readFileSync(TURNS_FILE, "utf-8");
+    return JSON.parse(raw) as TurnRecord[];
+  } catch {
+    return [];
+  }
+}
+
+function saveTurnsToDisk(records: TurnRecord[]): void {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(TURNS_FILE, JSON.stringify(records, null, 2), "utf-8");
+  } catch (err) {
+    console.error("[messages] Failed to persist turns:", err);
+  }
+}
+
 // ─── In-memory store ────────────────────────────────────────────────────────
 
 const chatHistory: ChatMessage[] = [];
+
+// Completed turns — loaded from disk on startup and written back after each run.
+const turns: TurnRecord[] = loadTurnsFromDisk();
+let currentTurnUserText = "";
 
 // Buffer of events from the currently-running agent turn.
 // Replayed to any SSE client that connects mid-run (e.g. after a Flutter restart).
@@ -49,16 +84,31 @@ export function getHistory(): ChatMessage[] {
   return chatHistory;
 }
 
-export function startRun(): void {
-  // Keep the previous run's events in the buffer — a client reconnecting
-  // between runs can still replay them. The buffer only resets here so new
-  // events don't pile on top of stale ones from the previous session.
-  runBuffer = [];
+export function getTurns(): TurnRecord[] {
+  return turns;
+}
+
+export function clearTurns(): void {
+  turns.length = 0;
+  saveTurnsToDisk(turns);
+}
+
+export function startRun(userText: string): void {
+  currentTurnUserText = userText;
+  // Seed the buffer with a start event so reconnecting clients (e.g. after a
+  // Flutter hot restart) can recover the live turn's user text and existing events.
+  runBuffer = [{ kind: "start", delta: userText }];
   runActive = true;
 }
 
 export function endRun(): void {
   runActive = false;
+  // Snapshot completed turn (exclude the sentinel start/done events).
+  const events = runBuffer.filter((e) => e.kind !== "start" && e.kind !== "done");
+  if (currentTurnUserText) {
+    turns.push({ userText: currentTurnUserText, events });
+    saveTurnsToDisk(turns);
+  }
   // Intentionally keep runBuffer — reconnecting clients after a completed
   // run still need to replay the full sequence (including the done event).
 }
@@ -68,11 +118,15 @@ export function endRun(): void {
 const sseClients = new Set<Response>();
 
 export function addSseClient(res: Response): void {
-  // Replay the full buffer to any connecting client — whether the run is
-  // still active or already finished. The client handles both cases via
-  // the presence/absence of a "done" event at the end.
-  for (const event of runBuffer) {
-    res.write(`data: ${JSON.stringify(event)}\n\n`);
+  // Only replay when a run is still in progress — Flutter needs to recover
+  // mid-run state after a hot restart. When the run is already done, Flutter
+  // loads history via GET /turns in initState instead; replaying a stale
+  // start→events→done sequence would race with that request and wipe the
+  // already-loaded turn list.
+  if (runActive) {
+    for (const event of runBuffer) {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    }
   }
   sseClients.add(res);
 }

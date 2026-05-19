@@ -7,6 +7,9 @@ import { startFlutter, FlutterProcess } from "./flutter_process";
 import {
   addMessage,
   getHistory,
+  getTurns,
+  clearTurns,
+  TurnRecord,
   broadcast,
   broadcastTransient,
   pingClients,
@@ -76,6 +79,16 @@ app.get("/messages", (_req: Request, res: Response<ChatMessage[]>) => {
   res.json(getHistory());
 });
 
+// Returns all completed turns (user text + stream events) for chat history.
+app.get("/turns", (_req: Request, res: Response<TurnRecord[]>) => {
+  res.json(getTurns());
+});
+
+app.delete("/turns", (_req: Request, res: Response) => {
+  clearTurns();
+  res.json({ status: "ok" });
+});
+
 // SSE endpoint — Flutter subscribes here to receive live agent activity events.
 app.get("/events", (req: Request, res: Response) => {
   res.setHeader("Content-Type", "text/event-stream");
@@ -118,11 +131,16 @@ app.post(
 
     console.log(`[prompt] Received: "${prompt.trim().slice(0, 80)}"`);
     addMessage("user", prompt.trim());
-    startRun();
+    startRun(prompt.trim());
 
     try {
       const message = await withTimeout(runAgentPrompt(prompt.trim(), broadcast), AGENT_TIMEOUT_MS);
       console.log(`[prompt] Agent finished at ${new Date().toISOString()}. Broadcasting restarting signal...`);
+
+      // Commit the turn BEFORE restarting Flutter so GET /turns is consistent
+      // when Flutter reconnects and calls _loadTurns() on initState.
+      addMessage("assistant", message);
+      endRun();
 
       try {
         broadcastTransient({ kind: "restarting" });
@@ -134,8 +152,8 @@ app.post(
         console.warn("[prompt] Flutter restart failed (non-fatal):", restartErr);
       }
 
-      addMessage("assistant", message);
-      endRun();
+      // Broadcast done AFTER restart so it lands in the replay buffer for the
+      // freshly reconnected Flutter client (and any future reconnectors).
       broadcast({ kind: "done" });
       res.json({ status: "ok", message });
     } catch (err) {
